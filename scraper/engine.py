@@ -13,6 +13,7 @@ from .sources.workingnomads import WorkingNomadsSource
 from .sources.adzuna import AdzunaSource
 from .sources.reed import ReedSource
 from .sources.remotive import RemotiveSource
+from .sources.career_pages import CareerPageSource
 from .dedup import deduplicate_jobs, url_hash
 
 logger = logging.getLogger(__name__)
@@ -70,6 +71,9 @@ class ScrapingEngine:
             ReedSource(self.config),            # UK job API (needs free key)
         ]
 
+        # Career page scraper (runs separately with career URLs)
+        self.career_page_source = CareerPageSource(self.config)
+
     # ------------------------------------------------------------------
     def run(self, target_date: Optional[date] = None) -> dict:
         """Execute a full scraping run for *target_date* (defaults to today)."""
@@ -91,12 +95,18 @@ class ScrapingEngine:
             db.session.commit()
 
             try:
-                # Load target companies
-                companies = [
-                    c.name
-                    for c in TargetCompany.query.filter_by(active=True).all()
+                # Load target companies (names + career URLs)
+                target_rows = TargetCompany.query.filter_by(active=True).all()
+                companies = [c.name for c in target_rows]
+                company_urls = [
+                    {'name': c.name, 'career_url': c.career_url}
+                    for c in target_rows
+                    if c.career_url
                 ]
-                logger.info(f"Loaded {len(companies)} target companies")
+                logger.info(
+                    f"Loaded {len(companies)} target companies "
+                    f"({len(company_urls)} with career URLs)"
+                )
 
                 # ---- Scrape from all available sources ----
                 all_jobs: List[JobData] = []
@@ -119,6 +129,23 @@ class ScrapingEngine:
                         all_jobs.extend(source_jobs)
                     except Exception as e:
                         logger.error(f"Source '{source.name}' failed: {e}")
+                        failed_sources += 1
+
+                # ---- Scrape company career pages ----
+                if company_urls:
+                    try:
+                        logger.info(
+                            f"Scraping {len(company_urls)} company career pages"
+                        )
+                        career_jobs = self.career_page_source.scrape_career_pages(
+                            company_urls
+                        )
+                        logger.info(
+                            f"Career pages returned {len(career_jobs)} raw jobs"
+                        )
+                        all_jobs.extend(career_jobs)
+                    except Exception as e:
+                        logger.error(f"Career page source failed: {e}")
                         failed_sources += 1
 
                 # ---- Filter UK-only ----

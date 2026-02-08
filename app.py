@@ -62,24 +62,73 @@ def create_app() -> Flask:
 
 # ── Seed target companies from JSON ─────────────────────────────
 def _seed_target_companies(app: Flask):
-    """Load target companies from the JSON file if the table is empty."""
-    with app.app_context():
-        if TargetCompany.query.count() > 0:
-            return
+    """Load target companies from the JSON file.
 
+    Supports two formats:
+      - Legacy list of strings: ["Company A", "Company B"]
+      - New list of objects:    [{"name": "Company A", "career_url": "https://..."}]
+
+    On first run (empty table) it inserts all entries.
+    On subsequent runs it updates career_url for existing companies
+    and adds any new companies found in the file.
+    """
+    with app.app_context():
         path = app.config['TARGET_COMPANIES_FILE']
         if not os.path.exists(path):
             logger.warning(f"Target companies file not found: {path}")
             return
 
         with open(path, 'r') as f:
-            companies = json.load(f)
+            raw = json.load(f)
 
-        for name in companies:
-            db.session.add(TargetCompany(name=name.strip(), active=True))
+        # Normalise to list of dicts
+        entries = []
+        for item in raw:
+            if isinstance(item, str):
+                entries.append({'name': item.strip(), 'career_url': None})
+            elif isinstance(item, dict):
+                entries.append({
+                    'name': (item.get('name') or '').strip(),
+                    'career_url': (item.get('career_url') or '').strip() or None,
+                })
 
-        db.session.commit()
-        logger.info(f"Seeded {len(companies)} target companies")
+        if TargetCompany.query.count() == 0:
+            # First run – bulk insert
+            for entry in entries:
+                if entry['name']:
+                    db.session.add(TargetCompany(
+                        name=entry['name'],
+                        career_url=entry['career_url'],
+                        active=True,
+                    ))
+            db.session.commit()
+            logger.info(f"Seeded {len(entries)} target companies")
+        else:
+            # Subsequent run – upsert career URLs + add new companies
+            existing = {c.name.lower(): c for c in TargetCompany.query.all()}
+            added = 0
+            updated = 0
+            for entry in entries:
+                if not entry['name']:
+                    continue
+                key = entry['name'].lower()
+                if key in existing:
+                    # Update career_url if the JSON has one and db doesn't (or changed)
+                    if entry['career_url'] and existing[key].career_url != entry['career_url']:
+                        existing[key].career_url = entry['career_url']
+                        updated += 1
+                else:
+                    db.session.add(TargetCompany(
+                        name=entry['name'],
+                        career_url=entry['career_url'],
+                        active=True,
+                    ))
+                    added += 1
+            db.session.commit()
+            if added or updated:
+                logger.info(
+                    f"Target companies sync: {added} added, {updated} career URLs updated"
+                )
 
 
 # ── Scheduler ────────────────────────────────────────────────────

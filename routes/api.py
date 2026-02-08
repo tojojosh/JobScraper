@@ -200,6 +200,39 @@ def daily_json(date_str):
     )
 
 
+# ── Date-Range JSON Export ───────────────────────────────────────────
+
+@api_bp.route('/jobs/export/json')
+def export_json_range():
+    """Export jobs as JSON for a date range (date_from … date_to)."""
+    date_from = _parse_date(request.args.get('date_from'))
+    date_to = _parse_date(request.args.get('date_to'))
+
+    if not date_from or not date_to:
+        return jsonify({'error': 'Both date_from and date_to are required (YYYY-MM-DD).'}), 400
+
+    if date_from > date_to:
+        return jsonify({'error': 'date_from must be before or equal to date_to.'}), 400
+
+    jobs = (
+        Job.query
+        .filter(Job.scrape_date >= date_from, Job.scrape_date <= date_to)
+        .order_by(Job.scrape_date.desc(), Job.company)
+        .all()
+    )
+    data = [job.to_json_export() for job in jobs]
+
+    filename = f'jobs_{date_from.isoformat()}_to_{date_to.isoformat()}.json'
+
+    return Response(
+        json.dumps(data, indent=2),
+        mimetype='application/json',
+        headers={
+            'Content-Disposition': f'attachment; filename={filename}'
+        },
+    )
+
+
 # ── Statistics ───────────────────────────────────────────────────────
 
 @api_bp.route('/stats')

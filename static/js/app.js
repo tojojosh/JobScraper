@@ -43,9 +43,13 @@ const dom = {
   statCompanies:  $('#statCompanies'),
   statDateRange:  $('#statDateRange'),
   statSources:    $('#statSources'),
-  // Modals
+  // Modals – JSON export
   jsonDateInput:  $('#jsonDateInput'),
   jsonDateList:   $('#jsonDateList'),
+  jsonRangeFrom:  $('#jsonRangeFrom'),
+  jsonRangeTo:    $('#jsonRangeTo'),
+  jsonTabSingle:  $('#jsonTabSingle'),
+  jsonTabRange:   $('#jsonTabRange'),
   btnDownloadJSON:$('#btnDownloadJSON'),
   scrapeBody:     $('#scrapeModalBody'),
 };
@@ -313,12 +317,16 @@ function exportData(type) {
   showToast('Export started', `Your ${type.toUpperCase()} file is downloading.`);
 }
 
-// ── Daily JSON ───────────────────────────────────────────────────
+// ── JSON Export (single date or date range) ─────────────────────
 async function openJSONModal() {
   const modal = new bootstrap.Modal($('#jsonDateModal'));
   dom.jsonDateInput.value = fmt(new Date());
 
-  // Load available dates
+  // Pre-fill range inputs with the current table filter dates
+  dom.jsonRangeFrom.value = state.dateFrom || fmt((() => { const d = new Date(); d.setDate(d.getDate() - 7); return d; })());
+  dom.jsonRangeTo.value   = state.dateTo   || fmt(new Date());
+
+  // Load available dates for single-date tab
   try {
     const res  = await fetch('/api/dates');
     const data = await res.json();
@@ -346,14 +354,37 @@ async function openJSONModal() {
 }
 
 function downloadDailyJSON() {
-  const d = dom.jsonDateInput.value;
-  if (!d) {
-    showToast('Error', 'Please select a date.', 'danger');
-    return;
+  // Determine which tab is active
+  const rangeTabActive = dom.jsonTabRange.classList.contains('active');
+
+  if (rangeTabActive) {
+    // ── Date range mode ──
+    const from = dom.jsonRangeFrom.value;
+    const to   = dom.jsonRangeTo.value;
+
+    if (!from || !to) {
+      showToast('Error', 'Please select both From and To dates.', 'danger');
+      return;
+    }
+    if (from > to) {
+      showToast('Error', 'From date must be before or equal to To date.', 'danger');
+      return;
+    }
+
+    window.location.href = `/api/jobs/export/json?date_from=${from}&date_to=${to}`;
+    bootstrap.Modal.getInstance($('#jsonDateModal')).hide();
+    showToast('Download started', `JSON for ${from} to ${to} is downloading.`);
+  } else {
+    // ── Single date mode ──
+    const d = dom.jsonDateInput.value;
+    if (!d) {
+      showToast('Error', 'Please select a date.', 'danger');
+      return;
+    }
+    window.location.href = `/api/jobs/daily-json/${d}`;
+    bootstrap.Modal.getInstance($('#jsonDateModal')).hide();
+    showToast('Download started', `JSON for ${d} is downloading.`);
   }
-  window.location.href = `/api/jobs/daily-json/${d}`;
-  bootstrap.Modal.getInstance($('#jsonDateModal')).hide();
-  showToast('Download started', `JSON for ${d} is downloading.`);
 }
 
 // ── Trigger Scrape ───────────────────────────────────────────────
