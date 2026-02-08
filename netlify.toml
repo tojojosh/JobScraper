@@ -1,0 +1,25 @@
+# ── Netlify Configuration ─────────────────────────────────────────
+# This project runs as:
+#   - Static frontend (HTML/CSS/JS) served from public/
+#   - Serverless Python function for all API endpoints
+#   - External PostgreSQL database (set DATABASE_URL in Netlify env vars)
+#
+# Required environment variable in Netlify dashboard:
+#   DATABASE_URL = postgresql://user:pass@host/dbname?sslmode=require
+#
+# Free PostgreSQL providers: https://neon.tech or https://supabase.com
+
+[build]
+  command = "mkdir -p public/static/css public/static/js && cp templates/index.html public/index.html && cp static/css/style.css public/static/css/style.css && cp static/js/app.js public/static/js/app.js"
+  publish = "public"
+  functions = "netlify/functions"
+
+[build.environment]
+  PYTHON_VERSION = "3.11"
+
+# ── API redirect: /api/* → serverless function ────────────────────
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api"
+  status = 200
+  force = true

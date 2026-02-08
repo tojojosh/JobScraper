@@ -16,6 +16,9 @@ env/
 # Database
 data/jobs.db
 
+# Netlify build output
+public/
+
 # Logs
 logs/*.log
 

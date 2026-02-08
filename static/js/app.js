@@ -407,6 +407,12 @@ async function triggerScrape() {
       loadJobs();
       loadStats();
       loadScrapeStatus();
+    } else if (data.status === 'unavailable') {
+      dom.scrapeBody.innerHTML =
+        '<i class="bi bi-info-circle-fill text-warning fs-1 mb-3 d-block"></i>' +
+        '<p class="mb-1"><strong>Scraping not available here</strong></p>' +
+        '<p class="text-muted small">Serverless deployments cannot run the scraper due to timeout limits. ' +
+        'Run the scraper locally with <code>python app.py</code> connected to the same database.</p>';
     } else {
       dom.scrapeBody.innerHTML =
         '<i class="bi bi-exclamation-triangle-fill text-danger fs-1 mb-3 d-block"></i>' +
